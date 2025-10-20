@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 
 import pytest
 import httpx
@@ -54,14 +55,19 @@ async def test_upload_too_large():
 
 @pytest.mark.asyncio
 async def test_upload_timeout(monkeypatch):
-    import asyncio
-
-    async def fake_wait_for(*a, **k):
-        raise asyncio.TimeoutError
+    async def fake_wait_for(coro, *a, **kw):
+        # start the coro so it's a proper task we can cancel
+        task = asyncio.create_task(coro)
+        try:
+            raise asyncio.TimeoutError
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     monkeypatch.setattr(asyncio, "wait_for", fake_wait_for)
 
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.post(f"{settings.API_PREFIX}/upload",
                           files={"file": ("slow.txt", b"x", "text/plain")})
@@ -94,3 +100,15 @@ async def test_filename_sanitization():
         assert "/" not in data["file"]["name"]
         assert "\\" not in data["file"]["name"]
         assert data["file"]["name"].endswith(".passwd") or "passwd" in data["file"]["name"]
+
+@pytest.mark.asyncio
+async def test_100_concurrent_uploads():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        async def up(i):
+            f = {"file": (f"f{i}.bin", b"x"*1024, "application/octet-stream")}
+            return await ac.post(f"{settings.API_PREFIX}/upload", files=f)
+
+        results = await asyncio.gather(*[up(i) for i in range(100)])
+        assert all(r.status_code == 200 for r in results)
+

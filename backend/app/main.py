@@ -1,21 +1,28 @@
-import asyncio
+import asyncio, logging
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response, APIRouter
+from fastapi import FastAPI, UploadFile, File, HTTPException, Response, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from werkzeug.utils import secure_filename
+from starlette.responses import JSONResponse
 
 from .config import settings
 from .logging import configure_logging
-from .models import FileListResponse, FileMeta, UploadResponse
-from .storage import IFileStore, make_store
+from .metrics import metrics
+from .models import UploadResponse, FileListResponse, FileMeta
+from .storage import make_store, IFileStore
+from .middlewares import RequestContextMiddleware
+from .exceptions import json_exception_handler
 
 configure_logging()
+logger = logging.getLogger("app")
 
 app = FastAPI(title="File Upload API", version=settings.API_VERSION)
 store: IFileStore = make_store(settings.FILE_BACKEND)
 api_router = APIRouter(prefix=settings.API_PREFIX)
+upload_semaphore = asyncio.Semaphore(settings.CONCURRENT_UPLOAD_LIMIT)
 
-
+app.add_exception_handler(Exception, json_exception_handler)
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_ORIGIN],
@@ -24,13 +31,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def in_flight_mw(request: Request, call_next):
+    """Track requests_in_progress metric."""
+    await metrics.inc_in_progress()
+    try:
+        return await call_next(request)
+    finally:
+        await metrics.dec_in_progress()
+@app.get("/")
+async def root():
+    """Root liveness endpoint."""
+    return {"ok": True, "message": "File Upload API", "version": settings.API_VERSION}
+
 @api_router.get("/health")
 async def health():
-    """
-    Health check endpoint.
-    :return: JSON object with {"status": "ok"}.
-    """
-    return {"status": "ok"}
+    """Health and uptime check."""
+    return {"status": "ok", "uptime_s": metrics.uptime_s()}
 
 async def _read_stream_with_timeout(up: UploadFile, max_bytes: int, timeout: int) -> bytes:
     """
@@ -62,6 +80,20 @@ def api_version_header(resp: Response):
     """
     resp.headers["x-api-version"] = settings.API_VERSION
 
+@api_router.get("/metrics")
+async def get_metrics():
+    """Expose runtime metrics."""
+    if not settings.ENABLE_METRICS:
+        return JSONResponse({"ok": False, "error": "metrics_disabled"}, status_code=404)
+    return {
+        "ok": True,
+        "uploads_total": metrics.counters.uploads_total,
+        "upload_bytes_sum": metrics.counters.upload_bytes_sum,
+        "requests_in_progress": metrics.gauges.requests_in_progress,
+        "queue_len": metrics.gauges.queue_len,
+        "uptime_s": metrics.uptime_s(),
+    }
+
 @api_router.get("/files", response_model=FileListResponse)
 async def list_files(response: Response):
     """
@@ -77,17 +109,32 @@ async def list_files(response: Response):
     ])
 
 @api_router.post("/upload", response_model=UploadResponse)
-async def upload_file(response: Response, file: UploadFile = File(...)):
-    """
-    Handle file upload and save it into the in-memory store.
-    :param response: Response object for version header injection.
-    :param file: Incoming file from multipart form.
-    :return: UploadResponse containing saved file metadata.
-    """
+async def upload_file(
+    response: Response,
+    request: Request,
+    file: UploadFile = File(...),
+):
+    """Upload file with concurrency limits, metrics, and safety checks."""
     api_version_header(response)
+
+    if settings.FEATURE_REQUIRE_CSRF_HEADER:
+        if request.headers.get("x-csrf-token") is None:
+            raise HTTPException(status_code=400, detail="missing csrf header")
+
+    if upload_semaphore.locked() and upload_semaphore._value <= 0:
+        await metrics.set_queue_len(settings.CONCURRENT_UPLOAD_LIMIT)
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "error": "backpressure"},
+            headers={"Retry-After": "1"},
+        )
+
     safe_name = secure_filename(file.filename or "unnamed")
-    data = await _read_stream_with_timeout(file, settings.MAX_UPLOAD_SIZE_BYTES, settings.REQUEST_TIMEOUT_SEC)
-    saved = await store.save(safe_name, file.content_type or "application/octet-stream", data)
-    meta = FileMeta(name=saved.name, size=saved.size, content_type=saved.content_type, uploaded_at=saved.uploaded_at)
-    return UploadResponse(file=meta)
+    async with upload_semaphore:
+        await metrics.set_queue_len(settings.CONCURRENT_UPLOAD_LIMIT - upload_semaphore._value)
+        data = await _read_stream_with_timeout(file, settings.MAX_UPLOAD_SIZE_BYTES, settings.REQUEST_TIMEOUT_SEC)
+        saved = await store.save(safe_name, file.content_type or "application/octet-stream", data)
+        await metrics.inc_uploads(len(data))
+        meta = FileMeta(name=saved.name, size=saved.size, content_type=saved.content_type, uploaded_at=saved.uploaded_at)
+        return UploadResponse(file=meta)
 app.include_router(api_router)
