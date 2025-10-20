@@ -18,13 +18,13 @@ class Metrics:
     Thread-safe asynchronous metrics tracker for upload system.
     Tracks counts, gauges, and uptime.
     """
-    def __init__(self):
+    def __init__(self)->None:
         self._lock = asyncio.Lock()
         self.counters = Counters()
         self.gauges = Gauges()
         self.start_time = time.monotonic()
 
-    async def inc_uploads(self, bytes_: int):
+    async def inc_uploads(self, bytes_: int)->None:
         """
         Increment uploads_total and upload_bytes_sum.
         :param bytes_: Size of uploaded file in bytes.
@@ -33,17 +33,17 @@ class Metrics:
             self.counters.uploads_total += 1
             self.counters.upload_bytes_sum += bytes_
 
-    async def inc_in_progress(self):
+    async def inc_in_progress(self)->None:
         """Increment number of in-progress requests."""
         async with self._lock:
             self.gauges.requests_in_progress += 1
 
-    async def dec_in_progress(self):
+    async def dec_in_progress(self)->None:
         """Decrement number of in-progress requests."""
         async with self._lock:
             self.gauges.requests_in_progress -= 1
 
-    async def set_queue_len(self, n: int):
+    async def set_queue_len(self, n: int)->None:
         """Set the queue length gauge."""
         async with self._lock:
             self.gauges.queue_len = n

@@ -28,7 +28,7 @@ class MemoryStore(IFileStore):
     """
     Thread-safe in-memory implementation of the file store interface.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._files: Dict[str, StoredFile] = {}
 
@@ -55,11 +55,12 @@ class S3StubStore(IFileStore):
     """
     Stubbed file store mimicking S3 behavior using an inner MemoryStore.
     """
-    def __init__(self): self._inner = MemoryStore()
-    async def save(self, *a, **k): return await self._inner.save(*a, **k)
-    async def list(self): return await self._inner.list()
-    async def get(self, name: str): return await self._inner.get(name)
-    async def clear(self): return await self._inner.clear()
+    def __init__(self)-> None: self._inner = MemoryStore()
+    async def save(self, name: str, content_type: str, data: bytes)->StoredFile:
+        return await self._inner.save(name, content_type, data)
+    async def list(self)->list[StoredFile]: return await self._inner.list()
+    async def get(self, name: str)->StoredFile|None: return await self._inner.get(name)
+    async def clear(self)-> None: return await self._inner.clear()
 
 def make_store(kind: str) -> IFileStore:
     """

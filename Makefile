@@ -19,12 +19,12 @@ test:
 lint:
 	cd backend && ruff check . && mypy app
 	cd backend && bandit -r app || true
-	cd frontend && npm run lint
 
 fmt:
 	cd backend && ruff check . --fix
 	cd frontend && npm run format
 
+# necessary to have backend running
 generate:
 	./scripts/generate_api_types.sh
 

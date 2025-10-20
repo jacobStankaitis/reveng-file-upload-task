@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("app.errors")
 
-async def json_exception_handler(request: Request, exc: Exception):
+async def json_exception_handler(request: Request, exc: Exception)-> JSONResponse:
     """
     Handle unhandled exceptions in FastAPI and return a structured JSON error response.
     :param request: Incoming HTTP request that triggered the exception.

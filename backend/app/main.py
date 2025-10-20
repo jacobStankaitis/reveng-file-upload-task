@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import secrets
+from typing import Awaitable, Callable
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,11 +37,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 @api_router.options("/{path:path}")
-async def options_catchall():
+async def options_catchall() -> Response:
     return Response(status_code=200)
 
 @app.middleware("http")
-async def in_flight_mw(request: Request, call_next):
+async def in_flight_mw(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """Track requests_in_progress metric."""
     await metrics.inc_in_progress()
     try:
@@ -48,14 +49,14 @@ async def in_flight_mw(request: Request, call_next):
     finally:
         await metrics.dec_in_progress()
 @app.get("/")
-async def root():
+async def root() -> JSONResponse:
     """Root liveness endpoint."""
-    return {"ok": True, "message": "File Upload API", "version": settings.API_VERSION}
+    return JSONResponse({"ok": True, "message": "File Upload API", "version": settings.API_VERSION})
 
 @api_router.get("/health")
-async def health():
+async def health() -> JSONResponse:
     """Health and uptime check."""
-    return {"status": "ok", "uptime_s": metrics.uptime_s()}
+    return JSONResponse({"status": "ok", "uptime_s": metrics.uptime_s()})
 
 async def _read_stream_with_timeout(up: UploadFile, max_bytes: int, timeout: int) -> bytes:
     """
@@ -67,7 +68,7 @@ async def _read_stream_with_timeout(up: UploadFile, max_bytes: int, timeout: int
     :raises HTTPException: 413 if too large, 408 if timed out.
     """
     buf = bytearray()
-    async def _read_all():
+    async def _read_all() -> None:
         chunk = await up.read(64 * 1024)
         while chunk:
             buf.extend(chunk)
@@ -80,7 +81,7 @@ async def _read_stream_with_timeout(up: UploadFile, max_bytes: int, timeout: int
         raise HTTPException(status_code=408, detail="upload timeout") from None
     return bytes(buf)
 
-def api_version_header(resp: Response):
+def api_version_header(resp: Response) -> None:
     """
     Inject X-API-Version header into a FastAPI response.
     :param resp: Response object to modify.
@@ -88,21 +89,21 @@ def api_version_header(resp: Response):
     resp.headers["x-api-version"] = settings.API_VERSION
 
 @api_router.get("/metrics")
-async def get_metrics():
+async def get_metrics() -> JSONResponse:
     """Expose runtime metrics."""
     if not settings.ENABLE_METRICS:
         return JSONResponse({"ok": False, "error": "metrics_disabled"}, status_code=404)
-    return {
+    return JSONResponse({
         "ok": True,
         "uploads_total": metrics.counters.uploads_total,
         "upload_bytes_sum": metrics.counters.upload_bytes_sum,
         "requests_in_progress": metrics.gauges.requests_in_progress,
         "queue_len": metrics.gauges.queue_len,
         "uptime_s": metrics.uptime_s(),
-    }
+    })
 
 @api_router.get("/files", response_model=FileListResponse)
-async def list_files(response: Response):
+async def list_files(response: Response) -> FileListResponse:
     """
     List all uploaded files in memory.
     :param response: FastAPI response for adding headers.
@@ -120,7 +121,7 @@ async def upload_file(
     response: Response,
     request: Request,
     file: UploadFile = File(...), # noqa: B008
-):
+) -> UploadResponse | JSONResponse:
     """Upload file with concurrency limits, metrics, safety checks, and deduping."""
     api_version_header(response)
 
@@ -175,7 +176,7 @@ async def upload_file(
         return UploadResponse(file=meta)
 
 @api_router.get("/files/{name}")
-async def download_file(name: str):
+async def download_file(name: str) -> Response:
     """
     Download a previously uploaded file by name.
     - Name is sanitized to match how we saved it.

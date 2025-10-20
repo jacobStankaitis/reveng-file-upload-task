@@ -1,7 +1,7 @@
 import logging
 import time
 from contextvars import ContextVar
-from typing import Callable
+from typing import Awaitable, Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,7 +16,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     Middleware that injects request_id and trace_id into contextvars,
     logs request completion, and attaches tracing headers.
     """
-    async def dispatch(self, request: Request, call_next: Callable):
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         rid = request.headers.get("x-request-id") or new_id()
         request_id_var.set(rid)
 
