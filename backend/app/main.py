@@ -27,12 +27,16 @@ app.add_exception_handler(Exception, json_exception_handler)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN],
+    allow_origins=[settings.FRONTEND_ORIGIN,
+                   ],
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+@api_router.options("/{path:path}")
+async def options_catchall():
+    return Response(status_code=200)
 
 @app.middleware("http")
 async def in_flight_mw(request: Request, call_next):
