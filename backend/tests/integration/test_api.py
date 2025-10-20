@@ -112,3 +112,37 @@ async def test_100_concurrent_uploads():
         results = await asyncio.gather(*[up(i) for i in range(100)])
         assert all(r.status_code == 200 for r in results)
 
+@pytest.mark.asyncio
+async def test_upload_then_download_roundtrip():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        data = b"hello world"
+        up = await ac.post(f"{settings.API_PREFIX}/upload",
+                           files={"file": ("greeting.txt", data, "text/plain")})
+        assert up.status_code == 200
+        name = up.json()["file"]["name"]  # sanitized
+
+        dl = await ac.get(f"{settings.API_PREFIX}/files/{name}")
+        assert dl.status_code == 200
+        assert dl.headers.get("content-disposition", "").startswith('attachment;')
+        assert dl.headers.get("content-type", "").startswith("text/plain")
+        assert dl.content == data
+
+@pytest.mark.asyncio
+async def test_download_missing_404():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.get(f"{settings.API_PREFIX}/files/does-not-exist.txt")
+        assert r.status_code == 404
+@pytest.mark.asyncio
+async def test_duplicate_filename_gets_random_suffix():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        r1 = await ac.post(f"{settings.API_PREFIX}/upload",
+                           files={"file": ("dup.txt", b"a", "text/plain")})
+        r2 = await ac.post(f"{settings.API_PREFIX}/upload",
+                           files={"file": ("dup.txt", b"b", "text/plain")})
+        assert r1.status_code == 200 and r2.status_code == 200
+        n1 = r1.json()["file"]["name"]
+        n2 = r2.json()["file"]["name"]
+        assert n1 != n2 and n1.startswith("dup") and n2.startswith("dup")

@@ -1,7 +1,8 @@
 import time
 import asyncio
 from dataclasses import dataclass
-from typing import Dict, List, Protocol
+from typing import Dict, List, Protocol, Optional
+
 
 @dataclass
 class StoredFile:
@@ -21,6 +22,7 @@ class IFileStore(Protocol):
     async def save(self, name: str, content_type: str, data: bytes) -> StoredFile: ...
     async def list(self) -> List[StoredFile]: ...
     async def clear(self) -> None: ...
+    async def get(self, name: str) -> Optional[StoredFile]: ...
 
 class MemoryStore(IFileStore):
     """
@@ -45,6 +47,10 @@ class MemoryStore(IFileStore):
         async with self._lock:
             self._files.clear()
 
+    async def get(self, name: str) -> Optional[StoredFile]:
+        async with self._lock:
+            return self._files.get(name)
+
 class S3StubStore(IFileStore):
     """
     Stubbed file store mimicking S3 behavior using an inner MemoryStore.
@@ -52,6 +58,7 @@ class S3StubStore(IFileStore):
     def __init__(self): self._inner = MemoryStore()
     async def save(self, *a, **k): return await self._inner.save(*a, **k)
     async def list(self): return await self._inner.list()
+    async def get(self, name: str): return await self._inner.get(name)
     async def clear(self): return await self._inner.clear()
 
 def make_store(kind: str) -> IFileStore:

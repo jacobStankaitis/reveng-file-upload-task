@@ -1,4 +1,6 @@
 import asyncio, logging
+import os
+import secrets
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +17,7 @@ from .exceptions import json_exception_handler
 
 configure_logging()
 logger = logging.getLogger("app")
-
+dedupe_lock = asyncio.Lock()
 app = FastAPI(title="File Upload API", version=settings.API_VERSION)
 store: IFileStore = make_store(settings.FILE_BACKEND)
 api_router = APIRouter(prefix=settings.API_PREFIX)
@@ -114,13 +116,14 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
 ):
-    """Upload file with concurrency limits, metrics, and safety checks."""
+    """Upload file with concurrency limits, metrics, safety checks, and deduping."""
     api_version_header(response)
 
     if settings.FEATURE_REQUIRE_CSRF_HEADER:
         if request.headers.get("x-csrf-token") is None:
             raise HTTPException(status_code=400, detail="missing csrf header")
 
+    # backpressure
     if upload_semaphore.locked() and upload_semaphore._value <= 0:
         await metrics.set_queue_len(settings.CONCURRENT_UPLOAD_LIMIT)
         return JSONResponse(
@@ -129,12 +132,56 @@ async def upload_file(
             headers={"Retry-After": "1"},
         )
 
-    safe_name = secure_filename(file.filename or "unnamed")
+    # sanitize & validate
+    raw_name = file.filename or ""
+    safe_name = secure_filename(raw_name)
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="invalid filename")
+
+    name_root, name_ext = os.path.splitext(safe_name)
+
     async with upload_semaphore:
+        # reflect queued capacity
         await metrics.set_queue_len(settings.CONCURRENT_UPLOAD_LIMIT - upload_semaphore._value)
-        data = await _read_stream_with_timeout(file, settings.MAX_UPLOAD_SIZE_BYTES, settings.REQUEST_TIMEOUT_SEC)
-        saved = await store.save(safe_name, file.content_type or "application/octet-stream", data)
+
+        # read stream with size/time bounds before we grab the short critical section
+        data = await _read_stream_with_timeout(
+            file, settings.MAX_UPLOAD_SIZE_BYTES, settings.REQUEST_TIMEOUT_SEC
+        )
+        content_type = file.content_type or "application/octet-stream"
+
+        # short critical section: allocate a unique name then save
+        async with dedupe_lock:
+            candidate = safe_name
+            # probe store for collision; append short random suffix until unique
+            while (await store.get(candidate)) is not None:
+                suffix = secrets.token_hex(3)  # 6 hex chars
+                candidate = f"{name_root}_{suffix}{name_ext}"
+
+            saved = await store.save(candidate, content_type, data)
+
         await metrics.inc_uploads(len(data))
-        meta = FileMeta(name=saved.name, size=saved.size, content_type=saved.content_type, uploaded_at=saved.uploaded_at)
+        meta = FileMeta(
+            name=saved.name,
+            size=saved.size,
+            content_type=saved.content_type,
+            uploaded_at=saved.uploaded_at,
+        )
         return UploadResponse(file=meta)
+
+@api_router.get("/files/{name}")
+async def download_file(name: str):
+    """
+    Download a previously uploaded file by name.
+    - Name is sanitized to match how we saved it.
+    - Returns Content-Disposition: attachment.
+    """
+    safe_name = secure_filename(name)
+    f = await store.get(safe_name)
+    if f is None:
+        raise HTTPException(status_code=404, detail="file not found")
+    headers = {
+        "Content-Disposition": f'attachment; filename="{safe_name}"'
+    }
+    return Response(content=f.data, media_type=f.content_type, headers=headers)
 app.include_router(api_router)
