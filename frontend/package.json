@@ -7,24 +7,25 @@
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier -w .",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --config=playwright.config.ts",
     "generate:api": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.d.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "5.56.2",
     "next": "14.2.6",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@tanstack/react-query": "5.56.2",
     "zod": "3.23.8"
   },
   "devDependencies": {
-    "typescript": "5.6.2",
-    "eslint": "9.11.1",
+    "@playwright/test": "1.48.0",
     "@types/node": "20.14.11",
     "@types/react": "18.3.5",
     "@types/react-dom": "18.3.0",
-    "prettier": "3.3.3",
+    "dotenv": "^17.2.3",
+    "eslint": "9.11.1",
     "openapi-typescript": "7.5.1",
-    "@playwright/test": "1.48.0"
+    "prettier": "3.3.3",
+    "typescript": "5.6.2"
   }
 }

@@ -1,9 +1,13 @@
 # tests/property/test_property_uploads.py
-import pytest
 import httpx
-from hypothesis import given, settings as hsettings, strategies as st
-from app.main import app
+import pytest
+from hypothesis import given
+from hypothesis import settings as hsettings
+from hypothesis import strategies as st
+
 from app.config import settings as cfg
+from app.main import app
+
 
 @hsettings(deadline=None, max_examples=25)
 @given(name=st.text(min_size=1, max_size=50))

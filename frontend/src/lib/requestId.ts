@@ -1,3 +1,3 @@
 export function makeRequestId(): string {
-  return crypto.randomUUID().replace(/-/g, '');
+  return crypto.randomUUID().replace(/-/g, "");
 }

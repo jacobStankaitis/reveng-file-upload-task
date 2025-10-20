@@ -1,6 +1,7 @@
 import pytest
 from backend.app.storage import MemoryStore
 
+
 @pytest.mark.asyncio
 async def test_memory_store_roundtrip():
     s = MemoryStore()

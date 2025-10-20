@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
 
-import pytest
 import httpx
+import pytest
 
 from app.config import settings
 from app.main import app
@@ -25,7 +25,6 @@ async def test_upload_and_list():
 
 @pytest.mark.asyncio
 async def test_upload_and_list_order():
-    from app.main import store
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:

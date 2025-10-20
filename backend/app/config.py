@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "file-upload-app"
     API_VERSION: str = "1.0.0"

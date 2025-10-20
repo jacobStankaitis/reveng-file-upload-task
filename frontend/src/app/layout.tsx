@@ -1,13 +1,19 @@
-import '../styles/globals.css';
-import QueryProvider from '../providers/QueryProvider';
+import "../styles/globals.css";
+import QueryProvider from "../providers/QueryProvider";
 
-export default function RootLayout({ children }:{ children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en"><body>
-      <div className="container">
-        <h1>File Upload Demo</h1>
+    <html lang="en">
+      <body>
+        <div className="container">
+          <h1>File Upload Demo</h1>
           <QueryProvider>{children}</QueryProvider>
-      </div>
-    </body></html>
+        </div>
+      </body>
+    </html>
   );
 }

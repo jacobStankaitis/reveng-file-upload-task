@@ -1,19 +1,20 @@
-import asyncio, logging
+import asyncio
+import logging
 import os
 import secrets
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response, APIRouter, Request
+from fastapi import APIRouter, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from werkzeug.utils import secure_filename
 from starlette.responses import JSONResponse
+from werkzeug.utils import secure_filename
 
 from .config import settings
+from .exceptions import json_exception_handler
 from .logging import configure_logging
 from .metrics import metrics
-from .models import UploadResponse, FileListResponse, FileMeta
-from .storage import make_store, IFileStore
 from .middlewares import RequestContextMiddleware
-from .exceptions import json_exception_handler
+from .models import FileListResponse, FileMeta, UploadResponse
+from .storage import IFileStore, make_store
 
 configure_logging()
 logger = logging.getLogger("app")
@@ -76,7 +77,7 @@ async def _read_stream_with_timeout(up: UploadFile, max_bytes: int, timeout: int
     try:
         await asyncio.wait_for(_read_all(), timeout=timeout)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=408, detail="upload timeout")
+        raise HTTPException(status_code=408, detail="upload timeout") from None
     return bytes(buf)
 
 def api_version_header(resp: Response):
@@ -118,7 +119,7 @@ async def list_files(response: Response):
 async def upload_file(
     response: Response,
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = File(...), # noqa: B008
 ):
     """Upload file with concurrency limits, metrics, safety checks, and deduping."""
     api_version_header(response)

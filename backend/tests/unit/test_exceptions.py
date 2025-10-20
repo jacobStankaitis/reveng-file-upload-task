@@ -1,6 +1,9 @@
-import pytest, httpx
+import httpx
+import pytest
 from fastapi import FastAPI
+
 from app.exceptions import json_exception_handler
+
 
 @pytest.mark.asyncio
 async def test_json_exception_handler_returns_500(monkeypatch):

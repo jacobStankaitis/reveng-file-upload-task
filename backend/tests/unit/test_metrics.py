@@ -1,5 +1,8 @@
-import pytest, asyncio
+
+import pytest
+
 from app.metrics import Metrics
+
 
 @pytest.mark.asyncio
 async def test_metrics_counters_and_gauges():

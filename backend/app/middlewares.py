@@ -1,9 +1,12 @@
-import logging, time
+import logging
+import time
+from contextvars import ContextVar
 from typing import Callable
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+
 from .logging import new_id
-from contextvars import ContextVar
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
@@ -26,8 +29,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         try:
             response: Response = await call_next(request)
-        except Exception as e:
-            logger.exception("request failed", extra={"request_id": rid, "trace_id": trace_id, "path": request.url.path})
+        except Exception:
+            logger.exception(
+                "request failed",
+                extra={"request_id": rid, "trace_id": trace_id, "path": request.url.path}
+            )
             raise
         finally:
             duration_ms = int((time.perf_counter() - started) * 1000)

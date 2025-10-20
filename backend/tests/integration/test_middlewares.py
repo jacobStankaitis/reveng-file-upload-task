@@ -1,10 +1,12 @@
 import asyncio
 
-import pytest, httpx
-from fastapi import FastAPI, Response
+import httpx
+import pytest
+from fastapi import FastAPI
 
 from app.metrics import Metrics
 from app.middlewares import RequestContextMiddleware, request_id_var, trace_id_var
+
 
 @pytest.mark.asyncio
 async def test_request_context_middleware_injects_ids():

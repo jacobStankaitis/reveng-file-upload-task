@@ -1,4 +1,5 @@
-from backend.app.models import FileMeta, FileListResponse
+from backend.app.models import FileListResponse, FileMeta
+
 
 def test_models_examples():
     fm = FileMeta(name="x", size=1, content_type="text/plain", uploaded_at=1.0)

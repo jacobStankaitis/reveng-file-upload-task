@@ -1,7 +1,7 @@
-import time
 import asyncio
+import time
 from dataclasses import dataclass
-from typing import Dict, List, Protocol, Optional
+from typing import Dict, List, Optional, Protocol
 
 
 @dataclass

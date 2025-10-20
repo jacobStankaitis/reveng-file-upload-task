@@ -1,6 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('page renders', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByText('File Upload Demo')).toBeVisible();
+test("page renders", async ({ page, baseURL }) => {
+  console.log("baseURL:", baseURL);
+  await page.goto(baseURL!);
+  await expect(page.locator("body")).toContainText("File Upload Demo");
 });

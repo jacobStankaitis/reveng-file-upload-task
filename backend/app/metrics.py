@@ -1,6 +1,7 @@
-import time
 import asyncio
+import time
 from dataclasses import dataclass
+
 
 @dataclass
 class Counters:
